@@ -1,3 +1,3 @@
 # version-control
 
-this is a test
+how to test
