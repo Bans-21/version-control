@@ -1,0 +1,48 @@
+name: Feature Branch Automation
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  conflict-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Check for merge conflicts with staging
+        run: |
+          git fetch origin
+          if ! git merge-base --is-ancestor HEAD origin/staging; then
+            echo "Conflict detected. Aborting merge." && exit 1
+          fi
+
+      - name: Auto-merge to staging (if no conflicts)
+        run: |
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@github.com'
+          git checkout staging
+          git merge --no-ff ${{ github.ref_name }}
+          git push origin staging
+
+  create-pr:
+    needs: conflict-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR to production
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'Auto-merge from staging to production'
+          title: 'Release: Staging to Production'
+          body: 'Automated PR from staging to production after conflict-free merge.'
+          base: production
+          branch: staging
+
