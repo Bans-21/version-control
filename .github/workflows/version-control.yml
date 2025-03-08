@@ -1,48 +1,57 @@
-name: Feature Branch Automation
+name: Version Control Workflow
 
 on:
   push:
     branches:
-      - 'feature/**'
+      - 'feature'
 
 permissions:
-  id-token: write
   contents: write
   pull-requests: write
 
 jobs:
-  conflict-check:
+  auto-merge-to-staging:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Check for merge conflicts with staging
-        run: |
-          git fetch origin
-          if ! git merge-base --is-ancestor HEAD origin/staging; then
-            echo "Conflict detected. Aborting merge." && exit 1
-          fi
+      - name: Attempt Auto-Merge to Staging
+        id: auto-merge
+        uses: devmasx/merge-branch@v1.3.1
+        with:
+          type: now
+          from_branch: ${{ github.ref_name }}
+          target_branch: staging
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
-      - name: Auto-merge to staging (if no conflicts)
-        run: |
-          git config user.name 'github-actions'
-          git config user.email 'github-actions@github.com'
-          git checkout staging
-          git merge --no-ff ${{ github.ref_name }}
-          git push origin staging
+      - name: Check Merge Result
+        if: steps.auto-merge.outcome == 'failure'
+        run: echo "Auto-merge to staging failed due to conflicts. Creating a PR instead."
 
-  create-pr:
-    needs: conflict-check
+      - name: Create Pull Request to Staging
+        if: steps.auto-merge.outcome == 'failure'
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: ${{ github.ref_name }}
+          destination_branch: staging
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_title: "Auto PR: ${{ github.ref_name }} to Staging"
+          pr_body: "This PR is automatically created because auto-merge failed due to conflicts."
+
+  create-pull-request-to-production:
+    needs: auto-merge-to-staging
     runs-on: ubuntu-latest
     steps:
-      - name: Create PR to production
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'Auto-merge from staging to production'
-          title: 'Release: Staging to Production'
-          body: 'Automated PR from staging to production after conflict-free merge.'
-          base: production
-          branch: staging
+      - name: Checkout code
+        uses: actions/checkout@v2
 
+      - name: Create Pull Request to Production
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: staging
+          destination_branch: production
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_title: 'Auto PR: Staging to Production'
+          pr_body: 'This PR is automatically created after a successful feature merge to staging.'
