@@ -3,7 +3,7 @@ name: Feature Branch Automation
 on:
   push:
     branches:
-      - 'feature/**'
+      - 'feature'
 
 permissions:
   id-token: write
